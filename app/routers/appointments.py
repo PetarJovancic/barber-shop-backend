@@ -1,9 +1,13 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
 from app.exceptions import CancellationWindowError, SlotUnavailableError
+from app.models import Appointment, AppointmentStatus
 from app.schemas.appointment import AppointmentCreate, AppointmentOut, CancelResponse
 from app.services import booking, sms
 
@@ -61,3 +65,30 @@ async def cancel_appointment(token: str, session: AsyncSession = Depends(get_ses
     )
 
     return CancelResponse(message="Appointment cancelled successfully", appointment_id=appointment.id)
+
+
+@router.get("", response_model=list[AppointmentOut])
+async def list_appointments(session: AsyncSession = Depends(get_session)) -> list[AppointmentOut]:
+    result = await session.execute(select(Appointment).order_by(Appointment.scheduled_at))
+    return [AppointmentOut.model_validate(a) for a in result.scalars().all()]
+
+
+@router.get("/{appointment_id}", response_model=AppointmentOut)
+async def get_appointment(appointment_id: uuid.UUID, session: AsyncSession = Depends(get_session)) -> AppointmentOut:
+    appointment = await session.get(Appointment, appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return AppointmentOut.model_validate(appointment)
+
+
+@router.patch("/{appointment_id}/complete", response_model=AppointmentOut)
+async def complete_appointment(appointment_id: uuid.UUID, session: AsyncSession = Depends(get_session)) -> AppointmentOut:
+    appointment = await session.get(Appointment, appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if appointment.status != AppointmentStatus.CONFIRMED:
+        raise HTTPException(status_code=409, detail=f"Cannot complete an appointment with status '{appointment.status}'")
+    appointment.status = AppointmentStatus.COMPLETED
+    await session.commit()
+    await session.refresh(appointment)
+    return AppointmentOut.model_validate(appointment)
