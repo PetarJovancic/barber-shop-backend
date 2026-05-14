@@ -1,7 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, field_validator
+
+from app.services.phone import normalize_phone
 
 
 class AppointmentCreate(BaseModel):
@@ -13,10 +15,14 @@ class AppointmentCreate(BaseModel):
     scheduled_at: datetime
     notes: str | None = None
 
+    @field_validator("customer_phone")
+    @classmethod
+    def normalize(cls, v: str) -> str:
+        return normalize_phone(v)
+
     @field_validator("scheduled_at")
     @classmethod
     def must_be_future(cls, v: datetime) -> datetime:
-        from datetime import timezone
         now = datetime.now(timezone.utc)
         if v.tzinfo is None:
             raise ValueError("scheduled_at must include timezone info")
@@ -50,3 +56,25 @@ class AvailableSlot(BaseModel):
 class CancelResponse(BaseModel):
     message: str
     appointment_id: uuid.UUID
+
+
+class CancelRequest(BaseModel):
+    """Body for the in-app cancel endpoint.
+
+    `customer_phone` is optional but strongly recommended — without it the
+    server cannot verify the requester owns the appointment. We still allow
+    omission for now to ease client adoption; the router controls policy.
+    """
+
+    customer_phone: str | None = None
+
+    @field_validator("customer_phone")
+    @classmethod
+    def normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            return None
+        return normalize_phone(stripped)
+

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -14,6 +15,19 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 @router.post("", response_model=ReviewOut, status_code=201)
 async def create_review(payload: ReviewCreate, session: AsyncSession = Depends(get_session)) -> ReviewOut:
+    """Server-side enforcement of review rules.
+
+    The client hides the "Leave a Review" button after submission, but that's
+    only local — wiping the cache shouldn't allow duplicates. We re-check
+    every rule here:
+
+    - appointment exists
+    - status is COMPLETED *and* scheduled_at is in the past (defense in depth)
+    - no existing review (also enforced by the unique constraint, but we
+      give a friendlier 409 first)
+    - if `customer_phone` is provided, it must match the booking — without
+      this, anyone with the appointment_id could leave a fake review.
+    """
     result = await session.execute(
         select(Appointment).where(Appointment.id == payload.appointment_id).options(
             selectinload(Appointment.review)
@@ -24,8 +38,12 @@ async def create_review(payload: ReviewCreate, session: AsyncSession = Depends(g
         raise HTTPException(status_code=404, detail="Appointment not found")
     if appointment.status != AppointmentStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Reviews can only be submitted for completed appointments")
+    if appointment.scheduled_at >= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Reviews can only be submitted after the appointment time")
     if appointment.review:
         raise HTTPException(status_code=409, detail="A review already exists for this appointment")
+    if payload.customer_phone is not None and payload.customer_phone != appointment.customer_phone:
+        raise HTTPException(status_code=403, detail="Phone number does not match this appointment")
 
     review = Review(
         appointment_id=appointment.id,

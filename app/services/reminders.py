@@ -8,11 +8,23 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Appointment, AppointmentStatus
+from app.services import booking
 from app.services.sms import send_reminder
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
+
+
+async def _sweep_no_shows() -> None:
+    """Periodic sweep — flips appointments to no_show after a 1h grace window."""
+    async with AsyncSessionLocal() as session:
+        try:
+            count = await booking.sweep_no_shows(session)
+            if count:
+                logger.info("No-show sweep: flipped %s appointments", count)
+        except Exception:
+            logger.exception("No-show sweep failed")
 
 
 async def _send_pending_reminders() -> None:
@@ -54,8 +66,9 @@ async def _send_pending_reminders() -> None:
 
 def start_scheduler() -> None:
     scheduler.add_job(_send_pending_reminders, "interval", hours=1, id="reminders")
+    scheduler.add_job(_sweep_no_shows, "interval", minutes=15, id="no_show_sweep")
     scheduler.start()
-    logger.info("Reminder scheduler started")
+    logger.info("Background scheduler started (reminders + no-show sweep)")
 
 
 def stop_scheduler() -> None:

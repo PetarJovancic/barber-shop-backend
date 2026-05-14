@@ -14,10 +14,11 @@ dependencies = [
     "twilio>=9.0.0",
     "apscheduler>=3.10.4",
     "python-dateutil>=2.9.0",
+    "phonenumbers>=8.13.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "httpx>=0.27.0",
@@ -26,7 +27,11 @@ dev-dependencies = [
 ]
 
 [tool.poe.tasks]
-localserver = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+services-up = "docker compose up --always-recreate-deps -d --wait"
+services-down = "docker compose down"
+services-down-v = "docker compose down -v"
+runserver = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+localserver = "bash scripts/localserver.sh"
 localtests = "pytest tests/ -v"
 
 [tool.ruff]

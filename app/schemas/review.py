@@ -3,11 +3,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
+from app.services.phone import normalize_phone
+
 
 class ReviewCreate(BaseModel):
     appointment_id: uuid.UUID
     rating: int
     comment: str | None = None
+    customer_phone: str | None = None
 
     @field_validator("rating")
     @classmethod
@@ -15,6 +18,13 @@ class ReviewCreate(BaseModel):
         if not 1 <= v <= 5:
             raise ValueError("Rating must be between 1 and 5")
         return v
+
+    @field_validator("customer_phone")
+    @classmethod
+    def normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return normalize_phone(v)
 
 
 class ReviewOut(BaseModel):

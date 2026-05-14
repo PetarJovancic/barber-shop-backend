@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.database import engine
 from app.models import Base
@@ -12,11 +13,19 @@ from app.services.reminders import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        try:
+            await conn.execute(text("ALTER TYPE appointmentstatus ADD VALUE IF NOT EXISTS 'no_show'"))
+        except Exception:
+            logger.exception(
+                "Could not ensure 'no_show' enum value (run an alembic migration if upgrading)"
+            )
     start_scheduler()
     yield
     stop_scheduler()

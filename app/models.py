@@ -37,6 +37,30 @@ class AppointmentStatus(str, PyEnum):
     CONFIRMED = "confirmed"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
+    NO_SHOW = "no_show"
+
+
+class Customer(Base):
+    """A unique person, keyed by their normalized E.164 phone.
+
+    Holds cross-appointment state: how many late cancels / no-shows they've
+    racked up, and whether they're temporarily blocked from booking. This is
+    deliberately not a column on Appointment because the state spans many
+    appointments.
+    """
+
+    __tablename__ = "customers"
+
+    phone: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    late_cancel_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    no_show_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class Barber(Base):

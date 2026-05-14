@@ -1,12 +1,19 @@
-FROM python:3.12-slim
+FROM debian:bookworm-slim
 
-WORKDIR /app
+LABEL maintainer=backend-services@g2m.com
 
-RUN pip install uv
+RUN apt-get update && \
+    apt-get install -y curl git build-essential python3-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
+WORKDIR /src
+
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
+RUN sh /uv-installer.sh && rm /uv-installer.sh
+
+COPY . /src
+
+ENV PATH="/root/.local/bin/:$PATH"
 RUN uv sync --no-dev
 
-COPY . .
-
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
